@@ -1,21 +1,16 @@
 {
   "name": "decentralized-file-storage",
   "version": "1.0.0",
-  "description": "**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**",
-  "main": "index.js",
-  "directories": {
-    "lib": "lib",
-    "test": "test"
-  },
+  "description": "Decentralized file storage system using blockchain and IPFS",
+  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "ethers": "^6.13.1",
-    "express": "^4.19.2",
-    "ipfs-http-client": "^60.0.1"
+    "cors": "^2.8.5",
+    "ethers": "^5.5.1",
+    "express": "^4.17.1",
+    "ipfs-http-client": "^56.0.1"
   }
 }
