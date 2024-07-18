@@ -20,7 +20,7 @@ const ipfs = create({
 const contractABI = JSON.parse(
   fs.readFileSync(path.join(__dirname, "./out/Contract.sol/FileStorage.json"))
 ).abi;
-const contractAddress = "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82"; // Replace with your deployed contract address
+const contractAddress = "0x68B1D87F95878fE05B998F19b66F4baba5De1aed"; // Replace with your deployed contract address
 
 const provider = new ethers.providers.JsonRpcProvider("http://localhost:8545");
 const signer = provider.getSigner();
@@ -32,15 +32,15 @@ app.use(express.json());
 app.post("/upload", async (req, res) => {
   try {
     const { name, content } = req.body;
-    if (!name || !content) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Name and content are required" });
-    }
     const buffer = Buffer.from(content, "base64");
     const { cid } = await ipfs.add(buffer);
     await contract.uploadFile(name, cid.toString());
-    res.json({ success: true, cid: cid.toString() });
+    const latestVersion = await contract.getLatestVersion(name);
+    res.json({
+      success: true,
+      cid: cid.toString(),
+      version: latestVersion.toNumber(),
+    });
   } catch (error) {
     console.error("Server error:", error);
     res.status(500).json({ success: false, error: error.message });
@@ -50,7 +50,15 @@ app.post("/upload", async (req, res) => {
 app.get("/file/:name", async (req, res) => {
   try {
     const { name } = req.params;
-    const [ipfsHash, owner] = await contract.getFile(name);
+    const { version } = req.query;
+    const latestVersion = await contract.getLatestVersion(name);
+    const versionToFetch = version
+      ? parseInt(version)
+      : latestVersion.toNumber();
+    const [ipfsHash, owner, timestamp] = await contract.getFile(
+      name,
+      versionToFetch
+    );
 
     const chunks = [];
     for await (const chunk of ipfs.cat(ipfsHash)) {
@@ -58,18 +66,27 @@ app.get("/file/:name", async (req, res) => {
     }
     const content = Buffer.concat(chunks).toString();
 
-    res.json({ success: true, content: content, owner });
+    res.json({
+      success: true,
+      content,
+      owner,
+      version: versionToFetch,
+      latestVersion: latestVersion.toNumber(),
+      timestamp: new Date(timestamp * 1000).toISOString(),
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 app.get("/files", async (req, res) => {
   try {
     const fileCount = await contract.fileCount();
     const files = [];
     for (let i = 0; i < fileCount; i++) {
       const fileName = await contract.fileList(i);
-      files.push(fileName);
+      const latestVersion = await contract.getLatestVersion(fileName);
+      files.push({ name: fileName, version: latestVersion.toNumber() });
     }
     res.json({ success: true, files });
   } catch (error) {
@@ -83,6 +100,51 @@ app.delete("/file/:name", async (req, res) => {
     const { name } = req.params;
     await contract.deleteFile(name);
     res.json({ success: true, message: `File ${name} deleted successfully` });
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/file/:name/history", async (req, res) => {
+  try {
+    const { name } = req.params;
+    const latestVersion = await contract.getLatestVersion(name);
+    const history = [];
+
+    for (let version = 1; version <= latestVersion; version++) {
+      const [ipfsHash, owner, timestamp] = await contract.getFile(
+        name,
+        version
+      );
+      history.push({
+        version,
+        ipfsHash,
+        owner,
+        timestamp: new Date(timestamp * 1000).toISOString(),
+      });
+    }
+
+    res.json({ success: true, history });
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/file/:name/revert", async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { version } = req.body;
+
+    await contract.revertFile(name, version);
+
+    const latestVersion = await contract.getLatestVersion(name);
+    res.json({
+      success: true,
+      message: `File ${name} reverted to version ${version}`,
+      newVersion: latestVersion.toNumber(),
+    });
   } catch (error) {
     console.error("Server error:", error);
     res.status(500).json({ success: false, error: error.message });

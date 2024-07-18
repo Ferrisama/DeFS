@@ -39,12 +39,12 @@ const CSVAnalysis = ({ csvContent }) => {
   }, [csvContent]);
 
   if (data.length === 0) {
-    return <div>No data to display</div>;
+    return <div className="mt-4 text-gray-600">No data to display</div>;
   }
 
   return (
-    <div>
-      <h2>Data Analysis</h2>
+    <div className="mt-8">
+      <h2 className="text-xl font-bold mb-4">Data Analysis</h2>
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" />
