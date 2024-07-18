@@ -1,32 +1,51 @@
-import React, { useState } from "react";
+"use client";
+import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import axios from "axios";
+import CSVAnalysis from "./CSVAnalysis";
 
 const contractABI = [
   "function uploadFile(string memory name, string memory ipfsHash) public",
   "function getFile(string memory name) public view returns (string memory, address)",
 ];
-const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Replace with your contract address
+const contractAddress = "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82"; // Replace with your contract address
 
 function App() {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [retrieveName, setRetrieveName] = useState("");
+  const [files, setFiles] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchFiles();
+  }, []);
+
+  async function fetchFiles() {
+    try {
+      const response = await axios.get("http://localhost:3000/files");
+      console.log("Fetched files:", response.data);
+      setFiles(response.data.files);
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      setError(`Error fetching files: ${error.message}`);
+    }
+  }
 
   async function uploadFile() {
     if (!file) {
-      alert("Please select a file");
+      setError("Please select a file");
       return;
     }
     if (!fileName) {
-      alert("Please enter a file name");
+      setError("Please enter a file name");
       return;
     }
 
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const base64data = reader.result.split(",")[1]; // This gets the base64 data without the prefix
+      const base64data = reader.result.split(",")[1];
       try {
         const response = await axios.post(
           "http://localhost:3000/upload",
@@ -40,46 +59,44 @@ function App() {
             },
           }
         );
-        console.log("Upload response:", response);
+        console.log("Upload response:", response.data);
         alert(`File uploaded successfully! CID: ${response.data.cid}`);
+        fetchFiles();
       } catch (error) {
         console.error("Error uploading file:", error);
-        if (error.response) {
-          console.error("Error data:", error.response.data);
-          console.error("Error status:", error.response.status);
-          console.error("Error headers:", error.response.headers);
-          alert(
-            `Error uploading file: ${
-              error.response.data.error || "Unknown error"
-            }`
-          );
-        } else if (error.request) {
-          console.error("Error request:", error.request);
-          alert("Error uploading file: No response received from server");
-        } else {
-          console.error("Error message:", error.message);
-          alert(`Error uploading file: ${error.message}`);
-        }
+        setError(`Error uploading file: ${error.message}`);
       }
     };
     reader.readAsDataURL(file);
   }
 
-  async function retrieveFile() {
+  async function retrieveFile(name) {
     try {
-      const response = await axios.get(
-        `http://localhost:3000/file/${retrieveName}`
-      );
+      const response = await axios.get(`http://localhost:3000/file/${name}`);
+      console.log("Retrieved file:", response.data);
       setFileContent(response.data.content);
     } catch (error) {
       console.error("Error retrieving file:", error);
-      alert("Error retrieving file");
+      setError(`Error retrieving file: ${error.message}`);
+    }
+  }
+
+  async function deleteFile(name) {
+    try {
+      const response = await axios.delete(`http://localhost:3000/file/${name}`);
+      console.log("Delete response:", response.data);
+      alert(`File ${name} deleted successfully`);
+      fetchFiles();
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      setError(`Error deleting file: ${error.message}`);
     }
   }
 
   return (
     <div className="App">
       <h1>Decentralized File Storage</h1>
+      {error && <div style={{ color: "red" }}>{error}</div>}
       <div>
         <h2>Upload File</h2>
         <input type="file" onChange={(e) => setFile(e.target.files[0])} />
@@ -99,12 +116,29 @@ function App() {
           value={retrieveName}
           onChange={(e) => setRetrieveName(e.target.value)}
         />
-        <button onClick={retrieveFile}>Retrieve</button>
+        <button onClick={() => retrieveFile(retrieveName)}>Retrieve</button>
+      </div>
+      <div>
+        <h2>File List</h2>
+        {files.length === 0 ? (
+          <p>No files found</p>
+        ) : (
+          <ul>
+            {files.map((file, index) => (
+              <li key={index}>
+                {file}
+                <button onClick={() => retrieveFile(file)}>Retrieve</button>
+                <button onClick={() => deleteFile(file)}>Delete</button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <div>
         <h2>File Content:</h2>
-        <pre>{fileContent}</pre>
+        <pre>{fileContent || "No file content to display"}</pre>
       </div>
+      {fileContent && <CSVAnalysis csvContent={fileContent} />}
     </div>
   );
 }

@@ -20,7 +20,7 @@ const ipfs = create({
 const contractABI = JSON.parse(
   fs.readFileSync(path.join(__dirname, "./out/Contract.sol/FileStorage.json"))
 ).abi;
-const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Replace with your deployed contract address
+const contractAddress = "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82"; // Replace with your deployed contract address
 
 const provider = new ethers.providers.JsonRpcProvider("http://localhost:8545");
 const signer = provider.getSigner();
@@ -60,6 +60,31 @@ app.get("/file/:name", async (req, res) => {
 
     res.json({ success: true, content: content, owner });
   } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+app.get("/files", async (req, res) => {
+  try {
+    const fileCount = await contract.fileCount();
+    const files = [];
+    for (let i = 0; i < fileCount; i++) {
+      const fileName = await contract.fileList(i);
+      files.push(fileName);
+    }
+    res.json({ success: true, files });
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete("/file/:name", async (req, res) => {
+  try {
+    const { name } = req.params;
+    await contract.deleteFile(name);
+    res.json({ success: true, message: `File ${name} deleted successfully` });
+  } catch (error) {
+    console.error("Server error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
