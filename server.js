@@ -20,7 +20,7 @@ const ipfs = create({
 const contractABI = JSON.parse(
   fs.readFileSync(path.join(__dirname, "./out/Contract.sol/FileStorage.json"))
 ).abi;
-const contractAddress = "0x68B1D87F95878fE05B998F19b66F4baba5De1aed"; // Replace with your deployed contract address
+const contractAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Replace with your deployed contract address
 
 const provider = new ethers.providers.JsonRpcProvider("http://localhost:8545");
 const signer = provider.getSigner();
@@ -31,15 +31,16 @@ app.use(express.json());
 
 app.post("/upload", async (req, res) => {
   try {
-    const { name, content } = req.body;
+    const { name, content, folderPath } = req.body;
     const buffer = Buffer.from(content, "base64");
     const { cid } = await ipfs.add(buffer);
-    await contract.uploadFile(name, cid.toString());
+    await contract.uploadFile(name, cid.toString(), folderPath);
     const latestVersion = await contract.getLatestVersion(name);
     res.json({
       success: true,
       cid: cid.toString(),
       version: latestVersion.toNumber(),
+      folderPath,
     });
   } catch (error) {
     console.error("Server error:", error);
@@ -55,7 +56,7 @@ app.get("/file/:name", async (req, res) => {
     const versionToFetch = version
       ? parseInt(version)
       : latestVersion.toNumber();
-    const [ipfsHash, owner, timestamp] = await contract.getFile(
+    const [ipfsHash, owner, timestamp, folderPath] = await contract.getFile(
       name,
       versionToFetch
     );
@@ -73,6 +74,7 @@ app.get("/file/:name", async (req, res) => {
       version: versionToFetch,
       latestVersion: latestVersion.toNumber(),
       timestamp: new Date(timestamp * 1000).toISOString(),
+      folderPath,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -86,9 +88,31 @@ app.get("/files", async (req, res) => {
     for (let i = 0; i < fileCount; i++) {
       const fileName = await contract.fileList(i);
       const latestVersion = await contract.getLatestVersion(fileName);
-      files.push({ name: fileName, version: latestVersion.toNumber() });
+      const [, , , folderPath] = await contract.getFile(
+        fileName,
+        latestVersion
+      );
+      files.push({
+        name: fileName,
+        version: latestVersion.toNumber(),
+        folderPath,
+      });
     }
     res.json({ success: true, files });
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/folder", async (req, res) => {
+  try {
+    const { folderPath } = req.body;
+    await contract.createFolder(folderPath);
+    res.json({
+      success: true,
+      message: `Folder ${folderPath} created successfully`,
+    });
   } catch (error) {
     console.error("Server error:", error);
     res.status(500).json({ success: false, error: error.message });

@@ -3,31 +3,43 @@ import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import axios from "axios";
 import CSVAnalysis from "./CSVAnalysis";
+import { useAuth0 } from "@auth0/auth0-react";
+import LoginPage from "./LoginPage";
+import DiffView from "./DiffView";
 
 const contractABI = [
   "function uploadFile(string memory name, string memory ipfsHash) public",
   "function getFile(string memory name) public view returns (string memory, address)",
 ];
-const contractAddress = "0x68B1D87F95878fE05B998F19b66F4baba5De1aed"; // Replace with your contract address
+const contractAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Replace with your contract address
 
 function App() {
+  const { isAuthenticated, logout, user, isLoading } = useAuth0();
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [retrieveName, setRetrieveName] = useState("");
-  const [retrieveVersion, setRetrieveVersion] = useState("");
   const [files, setFiles] = useState([]);
   const [currentFile, setCurrentFile] = useState(null);
   const [versionHistory, setVersionHistory] = useState([]);
+  const [currentFolder, setCurrentFolder] = useState("/");
+  const [newFolderName, setNewFolderName] = useState("");
+  const [diffView, setDiffView] = useState(null);
+  const [version1, setVersion1] = useState(null);
+  const [version2, setVersion2] = useState(null);
 
   useEffect(() => {
-    fetchFiles();
-  }, []);
+    if (isAuthenticated) {
+      fetchFiles();
+    }
+  }, [isAuthenticated, currentFolder]);
 
   async function fetchFiles() {
     try {
       const response = await axios.get("http://localhost:3000/files");
-      setFiles(response.data.files);
+      setFiles(
+        response.data.files.filter((file) => file.folderPath === currentFolder)
+      );
     } catch (error) {
       console.error("Error fetching files:", error);
       alert(`Error fetching files: ${error.message}`);
@@ -35,24 +47,22 @@ function App() {
   }
 
   async function uploadFile() {
-    if (!file) {
-      alert("Please select a file");
-      return;
-    }
-    if (!fileName) {
-      alert("Please enter a file name");
+    if (!file || !fileName) {
+      alert("Please select a file and enter a file name");
       return;
     }
 
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64data = reader.result.split(",")[1];
+
       try {
         const response = await axios.post(
           "http://localhost:3000/upload",
           {
             name: fileName,
             content: base64data,
+            folderPath: currentFolder,
           },
           {
             headers: {
@@ -75,16 +85,33 @@ function App() {
     reader.readAsDataURL(file);
   }
 
-  async function fetchVersionHistory(name) {
-    try {
-      const response = await axios.get(
-        `http://localhost:3000/file/${name}/history`
-      );
-      setVersionHistory(response.data.history);
-    } catch (error) {
-      console.error("Error fetching version history:", error);
-      alert(`Error fetching version history: ${error.message}`);
+  async function createFolder() {
+    if (!newFolderName) {
+      alert("Please enter a folder name");
+      return;
     }
+
+    try {
+      const newFolderPath = `${currentFolder}${newFolderName}/`;
+      await axios.post("http://localhost:3000/folder", {
+        folderPath: newFolderPath,
+      });
+      alert(`Folder ${newFolderPath} created successfully`);
+      setNewFolderName("");
+      fetchFiles();
+    } catch (error) {
+      console.error("Error creating folder:", error);
+      alert(`Error creating folder: ${error.message}`);
+    }
+  }
+
+  function navigateToFolder(folderPath) {
+    setCurrentFolder(folderPath);
+  }
+
+  function navigateUp() {
+    const parentFolder = currentFolder.split("/").slice(0, -2).join("/") + "/";
+    setCurrentFolder(parentFolder);
   }
 
   async function retrieveFile(name, version = "") {
@@ -108,6 +135,18 @@ function App() {
     }
   }
 
+  async function fetchVersionHistory(name) {
+    try {
+      const response = await axios.get(
+        `http://localhost:3000/file/${name}/history`
+      );
+      setVersionHistory(response.data.history);
+    } catch (error) {
+      console.error("Error fetching version history:", error);
+      alert(`Error fetching version history: ${error.message}`);
+    }
+  }
+
   async function deleteFile(name) {
     try {
       await axios.delete(`http://localhost:3000/file/${name}`);
@@ -122,19 +161,31 @@ function App() {
     }
   }
 
-  async function revertFile(name, version) {
+  async function compareVersions(name, version1, version2) {
     try {
-      const response = await axios.post(
-        `http://localhost:3000/file/${name}/revert`,
-        { version }
+      const response1 = await axios.get(
+        `http://localhost:3000/file/${name}?version=${version1}`
       );
-      alert(response.data.message);
-      fetchFiles();
-      retrieveFile(name, response.data.newVersion);
+      const response2 = await axios.get(
+        `http://localhost:3000/file/${name}?version=${version2}`
+      );
+
+      setDiffView({
+        oldContent: response1.data.content,
+        newContent: response2.data.content,
+      });
     } catch (error) {
-      console.error("Error reverting file:", error);
-      alert(`Error reverting file: ${error.message}`);
+      console.error("Error comparing versions:", error);
+      alert(`Error comparing versions: ${error.message}`);
     }
+  }
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
   }
 
   return (
@@ -143,10 +194,25 @@ function App() {
         <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-light-blue-500 shadow-lg transform -skew-y-6 sm:skew-y-0 sm:-rotate-6 sm:rounded-3xl"></div>
         <div className="relative px-4 py-10 bg-white shadow-lg sm:rounded-3xl sm:p-20">
           <div className="max-w-md mx-auto">
-            <div>
+            <div className="flex justify-between items-center">
               <h1 className="text-2xl font-semibold">
                 Decentralized File Storage
               </h1>
+              <button
+                onClick={() => logout({ returnTo: window.location.origin })}
+                className="bg-red-500 text-white px-4 py-2 rounded-md text-sm"
+              >
+                Logout
+              </button>
+            </div>
+            <div className="mt-4">
+              <p>Welcome, {user.name}!</p>
+              <p>Current Folder: {currentFolder}</p>
+              {currentFolder !== "/" && (
+                <button onClick={navigateUp} className="text-blue-500">
+                  Up
+                </button>
+              )}
             </div>
             <div className="divide-y divide-gray-200">
               <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
@@ -175,37 +241,64 @@ function App() {
                   Upload
                 </button>
               </div>
-              <div className="pt-4 text-base leading-6 font-bold sm:text-lg sm:leading-7">
-                <p>File List</p>
-                <ul className="mt-2">
+              <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
+                <div className="flex flex-col">
+                  <label className="leading-loose">New Folder Name</label>
+                  <input
+                    type="text"
+                    className="px-4 py-2 border focus:ring-gray-500 focus:border-gray-900 w-full sm:text-sm border-gray-300 rounded-md focus:outline-none text-gray-600"
+                    placeholder="Enter folder name"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                  />
+                </div>
+                <button
+                  className="bg-green-500 flex justify-center items-center w-full text-white px-4 py-3 rounded-md focus:outline-none"
+                  onClick={createFolder}
+                >
+                  Create Folder
+                </button>
+              </div>
+              <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
+                <h2 className="text-xl font-bold">Files and Folders</h2>
+                <ul>
                   {files.map((file, index) => (
                     <li
                       key={index}
                       className="flex justify-between items-center"
                     >
-                      <span>
-                        {file.name} (Version: {file.version})
-                      </span>
+                      <span>{file.name}</span>
                       <div>
-                        <button
-                          className="text-blue-500 hover:text-blue-600"
-                          onClick={() => retrieveFile(file.name)}
-                        >
-                          View
-                        </button>
-                        <button
-                          className="ml-2 text-red-500 hover:text-red-600"
-                          onClick={() => deleteFile(file.name)}
-                        >
-                          Delete
-                        </button>
+                        {file.name.endsWith("/") ? (
+                          <button
+                            onClick={() => navigateToFolder(file.name)}
+                            className="text-blue-500 hover:text-blue-600 mr-2"
+                          >
+                            Open
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => retrieveFile(file.name)}
+                              className="text-blue-500 hover:text-blue-600 mr-2"
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={() => deleteFile(file.name)}
+                              className="text-red-500 hover:text-red-600"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
                       </div>
                     </li>
                   ))}
                 </ul>
               </div>
               {currentFile && (
-                <div className="pt-4">
+                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
                   <h2 className="text-xl font-bold">
                     Current File: {currentFile.name}
                   </h2>
@@ -214,10 +307,8 @@ function App() {
                     {currentFile.latestVersion}
                   </p>
                   <p>Timestamp: {currentFile.timestamp}</p>
-                  <h3 className="text-lg font-semibold mt-2">
-                    Version History
-                  </h3>
-                  <ul className="mt-2">
+                  <h3 className="text-lg font-semibold">Version History</h3>
+                  <ul>
                     {versionHistory.map((version) => (
                       <li
                         key={version.version}
@@ -226,35 +317,59 @@ function App() {
                         <span>
                           Version {version.version} - {version.timestamp}
                         </span>
-                        <div>
-                          <button
-                            className="text-blue-500 hover:text-blue-600"
-                            onClick={() =>
-                              retrieveFile(currentFile.name, version.version)
-                            }
-                          >
-                            View
-                          </button>
-                          {version.version !== currentFile.version && (
-                            <button
-                              className="ml-2 text-green-500 hover:text-green-600"
-                              onClick={() =>
-                                revertFile(currentFile.name, version.version)
-                              }
-                            >
-                              Revert
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          onClick={() =>
+                            retrieveFile(currentFile.name, version.version)
+                          }
+                          className="text-blue-500 hover:text-blue-600"
+                        >
+                          View
+                        </button>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
+              {currentFile && (
+                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
+                  <h3 className="text-lg font-semibold">Compare Versions</h3>
+                  <div className="flex space-x-2">
+                    <input
+                      type="number"
+                      placeholder="Version 1"
+                      className="px-2 py-1 border rounded"
+                      onChange={(e) => setVersion1(e.target.value)}
+                    />
+                    <input
+                      type="number"
+                      placeholder="Version 2"
+                      className="px-2 py-1 border rounded"
+                      onChange={(e) => setVersion2(e.target.value)}
+                    />
+                    <button
+                      onClick={() =>
+                        compareVersions(currentFile.name, version1, version2)
+                      }
+                      className="bg-blue-500 text-white px-4 py-2 rounded"
+                    >
+                      Compare
+                    </button>
+                  </div>
+                </div>
+              )}
+              {diffView && (
+                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
+                  <h3 className="text-lg font-semibold">Diff View</h3>
+                  <DiffView
+                    oldContent={diffView.oldContent}
+                    newContent={diffView.newContent}
+                  />
+                </div>
+              )}
               {fileContent && (
-                <div className="pt-4">
+                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
                   <h2 className="text-xl font-bold">File Content</h2>
-                  <pre className="mt-2 bg-gray-100 p-4 rounded-md overflow-auto">
+                  <pre className="bg-gray-100 p-4 rounded-md overflow-auto">
                     {fileContent}
                   </pre>
                 </div>

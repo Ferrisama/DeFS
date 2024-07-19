@@ -10,35 +10,38 @@ contract FileStorage {
     struct File {
         FileVersion[] versions;
         address owner;
+        string folderPath;
     }
 
     mapping(string => File) public files;
     string[] public fileList;
     uint public fileCount;
 
-    event FileUploaded(string name, string ipfsHash, address owner, uint256 version);
+    event FileUploaded(string name, string ipfsHash, address owner, uint256 version, string folderPath);
     event FileReverted(string name, uint256 fromVersion, uint256 newVersion);
     event FileDeleted(string name);
+    event FolderCreated(string folderPath);
 
-    function uploadFile(string memory name, string memory ipfsHash) public {
+    function uploadFile(string memory name, string memory ipfsHash, string memory folderPath) public {
         if (files[name].owner == address(0)) {
             fileList.push(name);
             fileCount++;
             files[name].owner = msg.sender;
+            files[name].folderPath = folderPath;
         } else {
             require(files[name].owner == msg.sender, "Only the owner can update the file");
         }
         
         files[name].versions.push(FileVersion(ipfsHash, block.timestamp));
-        emit FileUploaded(name, ipfsHash, msg.sender, files[name].versions.length);
+        emit FileUploaded(name, ipfsHash, msg.sender, files[name].versions.length, folderPath);
     }
 
-    function getFile(string memory name, uint256 version) public view returns (string memory, address, uint256) {
+    function getFile(string memory name, uint256 version) public view returns (string memory, address, uint256, string memory) {
         require(files[name].owner != address(0), "File does not exist");
         require(version > 0 && version <= files[name].versions.length, "Invalid version");
         
         FileVersion memory fileVersion = files[name].versions[version - 1];
-        return (fileVersion.ipfsHash, files[name].owner, fileVersion.timestamp);
+        return (fileVersion.ipfsHash, files[name].owner, fileVersion.timestamp, files[name].folderPath);
     }
 
     function getLatestVersion(string memory name) public view returns (uint256) {
@@ -69,6 +72,10 @@ contract FileStorage {
         
         uint256 newVersion = files[name].versions.length;
         emit FileReverted(name, versionToRevert, newVersion);
-        emit FileUploaded(name, ipfsHash, msg.sender, newVersion);
+        emit FileUploaded(name, ipfsHash, msg.sender, newVersion, files[name].folderPath);
+    }
+
+    function createFolder(string memory folderPath) public {
+        emit FolderCreated(folderPath);
     }
 }
