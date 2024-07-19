@@ -18,7 +18,9 @@ contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         string folderPath;
     }
 
-   mapping(string => File) public files;
+    mapping(string => bool) public folders;
+
+    mapping(string => File) public files;
     string[] public fileList;
     uint public fileCount;
 
@@ -91,7 +93,13 @@ contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function createFolder(string memory folderPath) public {
-        emit FolderCreated(folderPath);
+    require(!folders[folderPath], "Folder already exists");
+    folders[folderPath] = true;
+    emit FolderCreated(folderPath);
+    }
+
+    function folderExists(string memory folderPath) public view returns (bool) {
+    return folders[folderPath];
     }
     
     function _authorizeUpgrade(address newImplementation)

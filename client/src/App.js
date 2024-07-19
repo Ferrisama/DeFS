@@ -37,8 +37,13 @@ function App() {
   async function fetchFiles() {
     try {
       const response = await axios.get("http://localhost:3000/files");
+      console.log("Fetched files and folders:", response.data.files);
       setFiles(
-        response.data.files.filter((file) => file.folderPath === currentFolder)
+        response.data.files.filter((item) =>
+          item.isFolder
+            ? item.name === currentFolder
+            : item.folderPath === currentFolder
+        )
       );
     } catch (error) {
       console.error("Error fetching files:", error);
@@ -98,7 +103,7 @@ function App() {
       });
       alert(`Folder ${newFolderPath} created successfully`);
       setNewFolderName("");
-      fetchFiles();
+      await fetchFiles(); // Refresh the file list immediately after creating a folder
     } catch (error) {
       console.error("Error creating folder:", error);
       alert(`Error creating folder: ${error.message}`);
@@ -108,7 +113,6 @@ function App() {
   function navigateToFolder(folderPath) {
     setCurrentFolder(folderPath);
   }
-
   function navigateUp() {
     const parentFolder = currentFolder.split("/").slice(0, -2).join("/") + "/";
     setCurrentFolder(parentFolder);
@@ -207,10 +211,13 @@ function App() {
             </div>
             <div className="mt-4">
               <p>Welcome, {user.name}!</p>
-              <p>Current Folder: {currentFolder}</p>
+              <p className="font-bold">Current Folder: {currentFolder}</p>
               {currentFolder !== "/" && (
-                <button onClick={navigateUp} className="text-blue-500">
-                  Up
+                <button
+                  onClick={navigateUp}
+                  className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm mt-2"
+                >
+                  Up to Parent Folder
                 </button>
               )}
             </div>
@@ -238,7 +245,7 @@ function App() {
                   className="bg-blue-500 flex justify-center items-center w-full text-white px-4 py-3 rounded-md focus:outline-none"
                   onClick={uploadFile}
                 >
-                  Upload
+                  Upload to Current Folder
                 </button>
               </div>
               <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
@@ -256,37 +263,42 @@ function App() {
                   className="bg-green-500 flex justify-center items-center w-full text-white px-4 py-3 rounded-md focus:outline-none"
                   onClick={createFolder}
                 >
-                  Create Folder
+                  Create Folder in Current Directory
                 </button>
               </div>
               <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                <h2 className="text-xl font-bold">Files and Folders</h2>
+                <h2 className="text-xl font-bold">
+                  Files and Folders in {currentFolder}
+                </h2>
                 <ul>
-                  {files.map((file, index) => (
+                  {files.map((item, index) => (
                     <li
                       key={index}
-                      className="flex justify-between items-center"
+                      className="flex justify-between items-center py-2"
                     >
-                      <span>{file.name}</span>
+                      <span>
+                        {item.isFolder ? "📁 " : "📄 "}
+                        {item.name}
+                      </span>
                       <div>
-                        {file.name.endsWith("/") ? (
+                        {item.isFolder ? (
                           <button
-                            onClick={() => navigateToFolder(file.name)}
-                            className="text-blue-500 hover:text-blue-600 mr-2"
+                            onClick={() => navigateToFolder(item.name)}
+                            className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm mr-2"
                           >
-                            Open
+                            Open Folder
                           </button>
                         ) : (
                           <>
                             <button
-                              onClick={() => retrieveFile(file.name)}
-                              className="text-blue-500 hover:text-blue-600 mr-2"
+                              onClick={() => retrieveFile(item.name)}
+                              className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm mr-2"
                             >
                               View
                             </button>
                             <button
-                              onClick={() => deleteFile(file.name)}
-                              className="text-red-500 hover:text-red-600"
+                              onClick={() => deleteFile(item.name)}
+                              className="bg-red-500 text-white px-4 py-2 rounded-md text-sm"
                             >
                               Delete
                             </button>

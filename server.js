@@ -96,8 +96,23 @@ app.get("/files", async (req, res) => {
         name: fileName,
         version: latestVersion.toNumber(),
         folderPath,
+        isFolder: false,
       });
     }
+
+    // Add folders to the list
+    const folderPaths = files.map((file) => file.folderPath);
+    const uniqueFolders = [...new Set(folderPaths)];
+    for (const folder of uniqueFolders) {
+      const exists = await contract.folderExists(folder);
+      if (exists) {
+        files.push({
+          name: folder,
+          isFolder: true,
+        });
+      }
+    }
+
     res.json({ success: true, files });
   } catch (error) {
     console.error("Server error:", error);
@@ -109,10 +124,15 @@ app.post("/folder", async (req, res) => {
   try {
     const { folderPath } = req.body;
     await contract.createFolder(folderPath);
-    res.json({
-      success: true,
-      message: `Folder ${folderPath} created successfully`,
-    });
+    const exists = await contract.folderExists(folderPath);
+    if (exists) {
+      res.json({
+        success: true,
+        message: `Folder ${folderPath} created successfully`,
+      });
+    } else {
+      res.status(500).json({ success: false, error: "Folder creation failed" });
+    }
   } catch (error) {
     console.error("Server error:", error);
     res.status(500).json({ success: false, error: error.message });
