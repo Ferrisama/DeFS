@@ -20,7 +20,7 @@ const ipfs = create({
 const contractABI = JSON.parse(
   fs.readFileSync(path.join(__dirname, "./out/Contract.sol/FileStorage.json"))
 ).abi;
-const contractAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Replace with your deployed contract address
+const contractAddress = "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8"; // Replace with your deployed contract address
 
 const provider = new ethers.providers.JsonRpcProvider("http://localhost:8545");
 const signer = provider.getSigner();
@@ -85,6 +85,8 @@ app.get("/files", async (req, res) => {
   try {
     const fileCount = await contract.fileCount();
     const files = [];
+    const folders = new Set();
+
     for (let i = 0; i < fileCount; i++) {
       const fileName = await contract.fileList(i);
       const latestVersion = await contract.getLatestVersion(fileName);
@@ -92,25 +94,29 @@ app.get("/files", async (req, res) => {
         fileName,
         latestVersion
       );
+
       files.push({
         name: fileName,
         version: latestVersion.toNumber(),
         folderPath,
         isFolder: false,
       });
+
+      // Add all parent folders
+      let currentPath = folderPath;
+      while (currentPath !== "/") {
+        folders.add(currentPath);
+        currentPath = path.dirname(currentPath);
+      }
     }
 
-    // Add folders to the list
-    const folderPaths = files.map((file) => file.folderPath);
-    const uniqueFolders = [...new Set(folderPaths)];
-    for (const folder of uniqueFolders) {
-      const exists = await contract.folderExists(folder);
-      if (exists) {
-        files.push({
-          name: folder,
-          isFolder: true,
-        });
-      }
+    // Add folders to the file list
+    for (const folder of folders) {
+      files.push({
+        name: folder,
+        isFolder: true,
+        folderPath: path.dirname(folder),
+      });
     }
 
     res.json({ success: true, files });

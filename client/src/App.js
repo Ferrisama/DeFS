@@ -11,7 +11,7 @@ const contractABI = [
   "function uploadFile(string memory name, string memory ipfsHash) public",
   "function getFile(string memory name) public view returns (string memory, address)",
 ];
-const contractAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Replace with your contract address
+const contractAddress = "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8"; // Replace with your contract address
 
 function App() {
   const { isAuthenticated, logout, user, isLoading } = useAuth0();
@@ -39,16 +39,21 @@ function App() {
       const response = await axios.get("http://localhost:3000/files");
       console.log("Fetched files and folders:", response.data.files);
       setFiles(
-        response.data.files.filter((item) =>
-          item.isFolder
-            ? item.name === currentFolder
-            : item.folderPath === currentFolder
-        )
+        response.data.files.filter((item) => item.folderPath === currentFolder)
       );
     } catch (error) {
       console.error("Error fetching files:", error);
       alert(`Error fetching files: ${error.message}`);
     }
+  }
+
+  function navigateToFolder(folderPath) {
+    setCurrentFolder(folderPath);
+  }
+
+  function navigateUp() {
+    const parentFolder = currentFolder.split("/").slice(0, -1).join("/") || "/";
+    setCurrentFolder(parentFolder);
   }
 
   async function uploadFile() {
@@ -108,14 +113,6 @@ function App() {
       console.error("Error creating folder:", error);
       alert(`Error creating folder: ${error.message}`);
     }
-  }
-
-  function navigateToFolder(folderPath) {
-    setCurrentFolder(folderPath);
-  }
-  function navigateUp() {
-    const parentFolder = currentFolder.split("/").slice(0, -2).join("/") + "/";
-    setCurrentFolder(parentFolder);
   }
 
   async function retrieveFile(name, version = "") {
@@ -202,6 +199,15 @@ function App() {
               <h1 className="text-2xl font-semibold">
                 Decentralized File Storage
               </h1>
+              <p>Current Folder: {currentFolder}</p>
+              {currentFolder !== "/" && (
+                <button
+                  onClick={navigateUp}
+                  className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm"
+                >
+                  Up to Parent Folder
+                </button>
+              )}
               <button
                 onClick={() => logout({ returnTo: window.location.origin })}
                 className="bg-red-500 text-white px-4 py-2 rounded-md text-sm"
