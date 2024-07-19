@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-contract FileStorage {
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+
+contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     struct FileVersion {
         string ipfsHash;
         uint256 timestamp;
@@ -13,7 +18,7 @@ contract FileStorage {
         string folderPath;
     }
 
-    mapping(string => File) public files;
+   mapping(string => File) public files;
     string[] public fileList;
     uint public fileCount;
 
@@ -21,6 +26,16 @@ contract FileStorage {
     event FileReverted(string name, uint256 fromVersion, uint256 newVersion);
     event FileDeleted(string name);
     event FolderCreated(string folderPath);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() initializer {}
+
+    function initialize() initializer public {
+        __Ownable_init();
+        __UUPSUpgradeable_init();
+    }
+
+
 
     function uploadFile(string memory name, string memory ipfsHash, string memory folderPath) public {
         if (files[name].owner == address(0)) {
@@ -78,4 +93,10 @@ contract FileStorage {
     function createFolder(string memory folderPath) public {
         emit FolderCreated(folderPath);
     }
+    
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        onlyOwner
+        override
+    {}
 }

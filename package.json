@@ -13,5 +13,8 @@
     "ethers": "^5.5.1",
     "express": "^4.17.1",
     "ipfs-http-client": "^56.0.1"
+  },
+  "devDependencies": {
+    "hardhat": "^2.22.6"
   }
 }
