@@ -98,7 +98,7 @@ contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     folders[folderPath] = true;
     emit FolderCreated(folderPath);
     }
-
+    
     function folderExists(string memory folderPath) public view returns (bool) {
     return folders[folderPath];
     }

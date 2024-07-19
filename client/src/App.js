@@ -52,7 +52,7 @@ function App() {
   }
 
   function navigateUp() {
-    const parentFolder = currentFolder.split("/").slice(0, -1).join("/") || "/";
+    const parentFolder = currentFolder.split("/").slice(0, -2).join("/") + "/";
     setCurrentFolder(parentFolder);
   }
 
@@ -103,12 +103,12 @@ function App() {
 
     try {
       const newFolderPath = `${currentFolder}${newFolderName}/`;
-      await axios.post("http://localhost:3000/folder", {
+      const response = await axios.post("http://localhost:3000/folder", {
         folderPath: newFolderPath,
       });
-      alert(`Folder ${newFolderPath} created successfully`);
+      alert(response.data.message); // This will show either "created successfully" or "already exists"
       setNewFolderName("");
-      await fetchFiles(); // Refresh the file list immediately after creating a folder
+      fetchFiles(); // Refresh the file list
     } catch (error) {
       console.error("Error creating folder:", error);
       alert(`Error creating folder: ${error.message}`);
@@ -190,212 +190,185 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
-      <div className="relative py-3 sm:max-w-xl sm:mx-auto">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-light-blue-500 shadow-lg transform -skew-y-6 sm:skew-y-0 sm:-rotate-6 sm:rounded-3xl"></div>
-        <div className="relative px-4 py-10 bg-white shadow-lg sm:rounded-3xl sm:p-20">
-          <div className="max-w-md mx-auto">
-            <div className="flex justify-between items-center">
-              <h1 className="text-2xl font-semibold">
-                Decentralized File Storage
-              </h1>
-              <p>Current Folder: {currentFolder}</p>
-              {currentFolder !== "/" && (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar */}
+      <div className="w-64 bg-white shadow-md">
+        <div className="p-4">
+          <h1 className="text-2xl font-semibold text-gray-800">DFS</h1>
+          <p className="text-sm text-gray-600">Welcome, {user.name}</p>
+        </div>
+        <nav className="mt-4">
+          <button
+            onClick={() => logout({ returnTo: window.location.origin })}
+            className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-100"
+          >
+            Logout
+          </button>
+        </nav>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+            <h1 className="text-lg font-semibold text-gray-900">
+              Current Folder: {currentFolder}
+            </h1>
+          </div>
+        </header>
+
+        {/* Main content area */}
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* File upload form */}
+            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">Upload File</h2>
+              <div className="flex items-center space-x-4">
+                <input
+                  type="text"
+                  placeholder="File name"
+                  value={fileName}
+                  onChange={(e) => setFileName(e.target.value)}
+                  className="flex-1 p-2 border rounded"
+                />
+                <input
+                  type="file"
+                  onChange={(e) => setFile(e.target.files[0])}
+                  className="p-2 border rounded"
+                />
                 <button
-                  onClick={navigateUp}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm"
-                >
-                  Up to Parent Folder
-                </button>
-              )}
-              <button
-                onClick={() => logout({ returnTo: window.location.origin })}
-                className="bg-red-500 text-white px-4 py-2 rounded-md text-sm"
-              >
-                Logout
-              </button>
-            </div>
-            <div className="mt-4">
-              <p>Welcome, {user.name}!</p>
-              <p className="font-bold">Current Folder: {currentFolder}</p>
-              {currentFolder !== "/" && (
-                <button
-                  onClick={navigateUp}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm mt-2"
-                >
-                  Up to Parent Folder
-                </button>
-              )}
-            </div>
-            <div className="divide-y divide-gray-200">
-              <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                <div className="flex flex-col">
-                  <label className="leading-loose">File Name</label>
-                  <input
-                    type="text"
-                    className="px-4 py-2 border focus:ring-gray-500 focus:border-gray-900 w-full sm:text-sm border-gray-300 rounded-md focus:outline-none text-gray-600"
-                    placeholder="Enter file name"
-                    value={fileName}
-                    onChange={(e) => setFileName(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <label className="leading-loose">Select File</label>
-                  <input
-                    type="file"
-                    className="px-4 py-2 border focus:ring-gray-500 focus:border-gray-900 w-full sm:text-sm border-gray-300 rounded-md focus:outline-none text-gray-600"
-                    onChange={(e) => setFile(e.target.files[0])}
-                  />
-                </div>
-                <button
-                  className="bg-blue-500 flex justify-center items-center w-full text-white px-4 py-3 rounded-md focus:outline-none"
                   onClick={uploadFile}
+                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                 >
-                  Upload to Current Folder
+                  Upload
                 </button>
               </div>
-              <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                <div className="flex flex-col">
-                  <label className="leading-loose">New Folder Name</label>
-                  <input
-                    type="text"
-                    className="px-4 py-2 border focus:ring-gray-500 focus:border-gray-900 w-full sm:text-sm border-gray-300 rounded-md focus:outline-none text-gray-600"
-                    placeholder="Enter folder name"
-                    value={newFolderName}
-                    onChange={(e) => setNewFolderName(e.target.value)}
-                  />
-                </div>
+            </div>
+
+            {/* Create folder form */}
+            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">Create Folder</h2>
+              <div className="flex items-center space-x-4">
+                <input
+                  type="text"
+                  placeholder="Folder name"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  className="flex-1 p-2 border rounded"
+                />
                 <button
-                  className="bg-green-500 flex justify-center items-center w-full text-white px-4 py-3 rounded-md focus:outline-none"
                   onClick={createFolder}
+                  className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
                 >
-                  Create Folder in Current Directory
+                  Create Folder
                 </button>
               </div>
-              <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                <h2 className="text-xl font-bold">
-                  Files and Folders in {currentFolder}
+            </div>
+
+            {/* File and folder list */}
+            <div className="bg-white shadow-md rounded-lg p-6">
+              <h2 className="text-lg font-semibold mb-4">Files and Folders</h2>
+              <ul className="divide-y divide-gray-200">
+                {files.map((item, index) => (
+                  <li
+                    key={index}
+                    className="py-4 flex items-center justify-between"
+                  >
+                    <span className="flex items-center">
+                      {item.isFolder ? "📁" : "📄"}
+                      <span className="ml-2">{item.name}</span>
+                    </span>
+                    <div>
+                      {item.isFolder ? (
+                        <button
+                          onClick={() => navigateToFolder(item.name)}
+                          className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                        >
+                          Open
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => retrieveFile(item.name)}
+                            className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 mr-2"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() => deleteFile(item.name)}
+                            className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* File content and version history */}
+            {currentFile && (
+              <div className="bg-white shadow-md rounded-lg p-6 mt-6">
+                <h2 className="text-lg font-semibold mb-4">
+                  Current File: {currentFile.name}
                 </h2>
-                <ul>
-                  {files.map((item, index) => (
+                <p>
+                  Version: {currentFile.version} of {currentFile.latestVersion}
+                </p>
+                <p>Timestamp: {currentFile.timestamp}</p>
+
+                <h3 className="text-md font-semibold mt-4 mb-2">
+                  Version History
+                </h3>
+                <ul className="divide-y divide-gray-200">
+                  {versionHistory.map((version) => (
                     <li
-                      key={index}
-                      className="flex justify-between items-center py-2"
+                      key={version.version}
+                      className="py-2 flex items-center justify-between"
                     >
                       <span>
-                        {item.isFolder ? "📁 " : "📄 "}
-                        {item.name}
+                        Version {version.version} - {version.timestamp}
                       </span>
-                      <div>
-                        {item.isFolder ? (
-                          <button
-                            onClick={() => navigateToFolder(item.name)}
-                            className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm mr-2"
-                          >
-                            Open Folder
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => retrieveFile(item.name)}
-                              className="bg-blue-500 text-white px-4 py-2 rounded-md text-sm mr-2"
-                            >
-                              View
-                            </button>
-                            <button
-                              onClick={() => deleteFile(item.name)}
-                              className="bg-red-500 text-white px-4 py-2 rounded-md text-sm"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      <button
+                        onClick={() =>
+                          retrieveFile(currentFile.name, version.version)
+                        }
+                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                      >
+                        View
+                      </button>
                     </li>
                   ))}
                 </ul>
-              </div>
-              {currentFile && (
-                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                  <h2 className="text-xl font-bold">
-                    Current File: {currentFile.name}
-                  </h2>
-                  <p>
-                    Version: {currentFile.version} of{" "}
-                    {currentFile.latestVersion}
-                  </p>
-                  <p>Timestamp: {currentFile.timestamp}</p>
-                  <h3 className="text-lg font-semibold">Version History</h3>
-                  <ul>
-                    {versionHistory.map((version) => (
-                      <li
-                        key={version.version}
-                        className="flex justify-between items-center"
-                      >
-                        <span>
-                          Version {version.version} - {version.timestamp}
-                        </span>
-                        <button
-                          onClick={() =>
-                            retrieveFile(currentFile.name, version.version)
-                          }
-                          className="text-blue-500 hover:text-blue-600"
-                        >
-                          View
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {currentFile && (
-                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                  <h3 className="text-lg font-semibold">Compare Versions</h3>
-                  <div className="flex space-x-2">
-                    <input
-                      type="number"
-                      placeholder="Version 1"
-                      className="px-2 py-1 border rounded"
-                      onChange={(e) => setVersion1(e.target.value)}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Version 2"
-                      className="px-2 py-1 border rounded"
-                      onChange={(e) => setVersion2(e.target.value)}
-                    />
-                    <button
-                      onClick={() =>
-                        compareVersions(currentFile.name, version1, version2)
-                      }
-                      className="bg-blue-500 text-white px-4 py-2 rounded"
-                    >
-                      Compare
-                    </button>
+
+                {fileContent && (
+                  <div className="mt-4">
+                    <h3 className="text-md font-semibold mb-2">File Content</h3>
+                    <pre className="bg-gray-100 p-4 rounded-md overflow-auto max-h-60">
+                      {fileContent}
+                    </pre>
                   </div>
-                </div>
-              )}
-              {diffView && (
-                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                  <h3 className="text-lg font-semibold">Diff View</h3>
-                  <DiffView
-                    oldContent={diffView.oldContent}
-                    newContent={diffView.newContent}
-                  />
-                </div>
-              )}
-              {fileContent && (
-                <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
-                  <h2 className="text-xl font-bold">File Content</h2>
-                  <pre className="bg-gray-100 p-4 rounded-md overflow-auto">
-                    {fileContent}
-                  </pre>
-                </div>
-              )}
-              {fileContent && <CSVAnalysis csvContent={fileContent} />}
-            </div>
+                )}
+
+                {fileContent && <CSVAnalysis csvContent={fileContent} />}
+              </div>
+            )}
+
+            {/* Diff view */}
+            {diffView && (
+              <div className="bg-white shadow-md rounded-lg p-6 mt-6">
+                <h3 className="text-lg font-semibold mb-4">Diff View</h3>
+                <DiffView
+                  oldContent={diffView.oldContent}
+                  newContent={diffView.newContent}
+                />
+              </div>
+            )}
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );

@@ -115,7 +115,7 @@ app.get("/files", async (req, res) => {
       files.push({
         name: folder,
         isFolder: true,
-        folderPath: path.dirname(folder),
+        folderPath: path.dirname(folder) + "/",
       });
     }
 
@@ -129,15 +129,23 @@ app.get("/files", async (req, res) => {
 app.post("/folder", async (req, res) => {
   try {
     const { folderPath } = req.body;
-    await contract.createFolder(folderPath);
+
+    // First, check if the folder already exists
     const exists = await contract.folderExists(folderPath);
+
     if (exists) {
+      // If the folder already exists, return a success response
+      res.json({
+        success: true,
+        message: `Folder ${folderPath} already exists`,
+      });
+    } else {
+      // If the folder doesn't exist, create it
+      await contract.createFolder(folderPath);
       res.json({
         success: true,
         message: `Folder ${folderPath} created successfully`,
       });
-    } else {
-      res.status(500).json({ success: false, error: "Folder creation failed" });
     }
   } catch (error) {
     console.error("Server error:", error);
