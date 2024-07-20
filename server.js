@@ -80,17 +80,11 @@ app.get("/file/:name", async (req, res) => {
     const { name } = req.params;
     const { version } = req.query;
 
-    const cacheKey = `file:${name}:${version || "latest"}`;
-    const cachedFile = fileCache.get(cacheKey);
-
-    if (cachedFile) {
-      return res.json(cachedFile);
-    }
-
     const latestVersion = await contract.getLatestVersion(name);
     const versionToFetch = version
       ? parseInt(version)
       : latestVersion.toNumber();
+
     const [ipfsHash, owner, timestamp, folderPath] = await contract.getFile(
       name,
       versionToFetch
@@ -101,7 +95,6 @@ app.get("/file/:name", async (req, res) => {
       chunks.push(chunk);
     }
     const content = Buffer.concat(chunks).toString("base64");
-    console.log("Sending encrypted content:", content.substring(0, 100)); // Log first 100 chars
 
     const fileData = {
       success: true,
@@ -112,8 +105,6 @@ app.get("/file/:name", async (req, res) => {
       timestamp: new Date(timestamp * 1000).toISOString(),
       folderPath,
     };
-
-    fileCache.set(cacheKey, fileData);
 
     res.json(fileData);
   } catch (error) {
@@ -230,21 +221,25 @@ app.get("/file/:name/history", async (req, res) => {
   }
 });
 
-app.post("/file/:name/revert", async (req, res) => {
+app.post("/file/:name/rollback", async (req, res) => {
   try {
     const { name } = req.params;
     const { version } = req.body;
 
-    await contract.revertFile(name, version);
+    const [ipfsHash, owner, timestamp, folderPath] = await contract.getFile(
+      name,
+      version
+    );
 
-    const latestVersion = await contract.getLatestVersion(name);
+    // Update the file with the content from the specified version
+    await contract.uploadFile(name, ipfsHash, folderPath);
+
     res.json({
       success: true,
-      message: `File ${name} reverted to version ${version}`,
-      newVersion: latestVersion.toNumber(),
+      message: `File ${name} rolled back to version ${version}`,
     });
   } catch (error) {
-    console.error("Server error:", error);
+    console.error("Error rolling back file:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

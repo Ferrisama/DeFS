@@ -9,6 +9,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import LoginPage from "./LoginPage";
 import DiffView from "./DiffView";
 import IntegratedFileUpload from "./IntegratedFileUpload";
+import FilePreview from "./FilePreview";
 
 const contractABI = [
   "function uploadFile(string memory name, string memory ipfsHash) public",
@@ -184,12 +185,6 @@ function App() {
         }`
       );
 
-      console.log("Encryption key used for decryption:", encryptionKey);
-      console.log(
-        "Encrypted content after download:",
-        response.data.content.substring(0, 100)
-      ); // Log first 100 chars
-
       const encryptedContent = atob(response.data.content);
       let decryptedContent;
       try {
@@ -198,20 +193,38 @@ function App() {
         alert(error.message);
         return;
       }
+
+      // Determine file type
+      const fileType = response.data.fileType || "text/plain"; // Default to text/plain if not provided
+
       setFileContent(decryptedContent);
       setCurrentFile({
         name,
         version: response.data.version,
         latestVersion: response.data.latestVersion,
         timestamp: response.data.timestamp,
+        fileType: fileType,
       });
       fetchVersionHistory(name);
-      console.log("Decrypted content:", decryptedContent.substring(0, 100)); // Log first 100 chars
     } catch (error) {
       console.error("Error retrieving file:", error);
       alert(`Error retrieving file: ${error.message}`);
     }
   }
+
+  const handleRollback = async (version) => {
+    try {
+      await axios.post(
+        `http://localhost:3000/file/${currentFile.name}/rollback`,
+        { version }
+      );
+      alert(`File rolled back to version ${version}`);
+      retrieveFile(currentFile.name);
+    } catch (error) {
+      console.error("Error rolling back file:", error);
+      alert(`Error rolling back file: ${error.message}`);
+    }
+  };
 
   async function createFolder() {
     if (!newFolderName) {
@@ -484,6 +497,11 @@ function App() {
                 </p>
                 <p>Timestamp: {currentFile.timestamp}</p>
 
+                <FilePreview
+                  fileContent={fileContent}
+                  fileType={currentFile.fileType}
+                />
+
                 {/* File sharing controls */}
                 <div className="mt-4">
                   <h3 className="text-md font-semibold mb-2">File Sharing</h3>
@@ -522,26 +540,25 @@ function App() {
                       <span>
                         Version {version.version} - {version.timestamp}
                       </span>
-                      <button
-                        onClick={() =>
-                          retrieveFile(currentFile.name, version.version)
-                        }
-                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                      >
-                        View
-                      </button>
+                      <div>
+                        <button
+                          onClick={() =>
+                            retrieveFile(currentFile.name, version.version)
+                          }
+                          className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 mr-2"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => handleRollback(version.version)}
+                          className="bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600"
+                        >
+                          Rollback
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
-
-                {fileContent && (
-                  <div className="mt-4">
-                    <h3 className="text-md font-semibold mb-2">File Content</h3>
-                    <pre className="bg-gray-100 p-4 rounded-md overflow-auto max-h-60">
-                      {fileContent}
-                    </pre>
-                  </div>
-                )}
 
                 {fileContent && <CSVAnalysis csvContent={fileContent} />}
               </div>
