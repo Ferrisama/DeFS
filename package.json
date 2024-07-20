@@ -21,6 +21,7 @@
     "ipfs-http-client": "^56.0.1",
     "node-cache": "^5.1.2",
     "rate-limit-redis": "^4.2.0",
+    "react-dropzone": "^14.2.3",
     "scrolltrigger": "^1.0.1"
   },
   "devDependencies": {

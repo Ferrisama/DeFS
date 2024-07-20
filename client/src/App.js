@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import axios from "axios";
+import CryptoJS from "crypto-js";
 import CSVAnalysis from "./CSVAnalysis";
 import { useAuth0 } from "@auth0/auth0-react";
 import LoginPage from "./LoginPage";
@@ -21,6 +22,10 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [shareAddress, setShareAddress] = useState("");
+  const [encryptionKey, setEncryptionKey] = useState("");
+  const [password, setPassword] = useState("");
+  const [salt, setSalt] = useState("");
+  const [derivedKey, setDerivedKey] = useState("");
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -41,47 +46,99 @@ function App() {
     }
   }, [isAuthenticated, fetchFiles]);
 
+  useEffect(() => {
+    // Generate a random salt if not already set
+    if (!salt) {
+      const newSalt = CryptoJS.lib.WordArray.random(128 / 8).toString();
+      setSalt(newSalt);
+      localStorage.setItem("encryptionSalt", newSalt);
+    }
+  }, [salt]);
+
+  useEffect(() => {
+    // Load salt from local storage on component mount
+    const savedSalt = localStorage.getItem("encryptionSalt");
+    if (savedSalt) {
+      setSalt(savedSalt);
+    }
+  }, []);
+
   function navigateToFolder(folderPath) {
     setCurrentFolder(folderPath);
   }
 
+  const deriveKey = useCallback(() => {
+    if (password && salt) {
+      const key = CryptoJS.PBKDF2(password, salt, {
+        keySize: 256 / 32,
+        iterations: 1000,
+      }).toString();
+      setDerivedKey(key);
+    }
+  }, [password, salt]);
+
+  useEffect(() => {
+    deriveKey();
+  }, [deriveKey]);
+
+  const encryptFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const fileContent = event.target.result;
+        const encrypted = CryptoJS.AES.encrypt(
+          fileContent,
+          derivedKey
+        ).toString();
+        resolve(encrypted);
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsText(file);
+    });
+  };
+
+  const decryptFile = (encryptedContent) => {
+    try {
+      const decrypted = CryptoJS.AES.decrypt(encryptedContent, derivedKey);
+      return decrypted.toString(CryptoJS.enc.Utf8);
+    } catch (error) {
+      console.error("Decryption failed:", error);
+      throw new Error("Invalid password or corrupted file");
+    }
+  };
+
   async function uploadFile() {
-    if (!file || !fileName) {
-      alert("Please select a file and enter a file name");
+    if (!file || !fileName || !derivedKey) {
+      alert("Please select a file, enter a file name, and provide a password");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64data = reader.result.split(",")[1];
-
-      try {
-        const response = await axios.post(
-          "http://localhost:3000/upload",
-          {
-            name: fileName,
-            content: base64data,
-            folderPath: currentFolder,
+    try {
+      const encryptedContent = await encryptFile(file);
+      const response = await axios.post(
+        "http://localhost:3000/upload",
+        {
+          name: fileName,
+          content: encryptedContent,
+          folderPath: currentFolder,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
           },
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        console.log("Upload response:", response);
-        alert(
-          `File uploaded successfully! CID: ${response.data.cid}, Version: ${response.data.version}`
-        );
-        fetchFiles();
-        setFile(null);
-        setFileName("");
-      } catch (error) {
-        console.error("Error uploading file:", error);
-        alert(`Error uploading file: ${error.message}`);
-      }
-    };
-    reader.readAsDataURL(file);
+        }
+      );
+      console.log("Upload response:", response);
+      alert(
+        `File uploaded successfully! CID: ${response.data.cid}, Version: ${response.data.version}`
+      );
+      fetchFiles();
+      setFile(null);
+      setFileName("");
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      alert(`Error uploading file: ${error.message}`);
+    }
   }
 
   async function createFolder() {
@@ -111,7 +168,14 @@ function App() {
           version ? `?version=${version}` : ""
         }`
       );
-      setFileContent(response.data.content);
+      let decryptedContent;
+      try {
+        decryptedContent = decryptFile(response.data.content);
+      } catch (error) {
+        alert("Failed to decrypt file. Please check your password.");
+        return;
+      }
+      setFileContent(decryptedContent);
       setCurrentFile({
         name,
         version: response.data.version,
@@ -237,6 +301,17 @@ function App() {
         {/* Main content area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* Add encryption key input */}
+            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">Encryption Key</h2>
+              <input
+                type="password"
+                placeholder="Enter encryption key"
+                value={encryptionKey}
+                onChange={(e) => setEncryptionKey(e.target.value)}
+                className="w-full p-2 border rounded"
+              />
+            </div>
             {/* File upload form */}
             <div className="bg-white shadow-md rounded-lg p-6 mb-6">
               <h2 className="text-lg font-semibold mb-4">Upload File</h2>
@@ -260,6 +335,23 @@ function App() {
                   Upload
                 </button>
               </div>
+            </div>
+            {/* Updated password input */}
+            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">
+                Encryption Password
+              </h2>
+              <input
+                type="password"
+                placeholder="Enter encryption password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-2 border rounded"
+              />
+              <p className="text-sm text-gray-600 mt-2">
+                This password will be used to derive your encryption key. Make
+                sure to remember it, as it cannot be recovered.
+              </p>
             </div>
 
             {/* Create folder form */}
