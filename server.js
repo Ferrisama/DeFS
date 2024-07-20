@@ -22,7 +22,7 @@ const ipfs = create({
 const contractABI = JSON.parse(
   fs.readFileSync(path.join(__dirname, "./out/Contract.sol/FileStorage.json"))
 ).abi;
-const contractAddress = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"; // Replace with your deployed contract address
+const contractAddress = "0x7a2088a1bFc9d81c55368AE168C2C02570cB814F"; // Replace with your deployed contract address
 
 const provider = new ethers.providers.JsonRpcProvider("http://localhost:8545");
 const signer = provider.getSigner();
@@ -51,6 +51,7 @@ app.post("/upload", uploadLimiter, async (req, res) => {
   try {
     const { name, content, folderPath } = req.body;
     const buffer = Buffer.from(content, "base64");
+    console.log("Received encrypted content:", content.substring(0, 100)); // Log first 100 chars
     const { cid } = await ipfs.add(buffer);
     await contract.uploadFile(name, cid.toString(), folderPath);
     const latestVersion = await contract.getLatestVersion(name);
@@ -86,7 +87,6 @@ app.get("/file/:name", async (req, res) => {
       return res.json(cachedFile);
     }
 
-    // Your existing file retrieval logic here
     const latestVersion = await contract.getLatestVersion(name);
     const versionToFetch = version
       ? parseInt(version)
@@ -100,7 +100,8 @@ app.get("/file/:name", async (req, res) => {
     for await (const chunk of ipfs.cat(ipfsHash)) {
       chunks.push(chunk);
     }
-    const content = Buffer.concat(chunks).toString();
+    const content = Buffer.concat(chunks).toString("base64");
+    console.log("Sending encrypted content:", content.substring(0, 100)); // Log first 100 chars
 
     const fileData = {
       success: true,
@@ -112,7 +113,6 @@ app.get("/file/:name", async (req, res) => {
       folderPath,
     };
 
-    // Cache the file data
     fileCache.set(cacheKey, fileData);
 
     res.json(fileData);

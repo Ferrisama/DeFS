@@ -4,9 +4,17 @@ import { ethers } from "ethers";
 import axios from "axios";
 import CryptoJS from "crypto-js";
 import CSVAnalysis from "./CSVAnalysis";
+import { useDropzone } from "react-dropzone";
 import { useAuth0 } from "@auth0/auth0-react";
 import LoginPage from "./LoginPage";
 import DiffView from "./DiffView";
+import DragDropUpload from "./DragDropUpload";
+
+const contractABI = [
+  "function uploadFile(string memory name, string memory ipfsHash) public",
+  "function getFile(string memory name) public view returns (string memory, address)",
+];
+const contractAddress = "0x7a2088a1bFc9d81c55368AE168C2C02570cB814F"; // Replace with your contract address
 
 function App() {
   const { isAuthenticated, logout, user, isLoading } = useAuth0();
@@ -23,6 +31,7 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [shareAddress, setShareAddress] = useState("");
   const [encryptionKey, setEncryptionKey] = useState("");
+
   const [password, setPassword] = useState("");
   const [salt, setSalt] = useState("");
   const [derivedKey, setDerivedKey] = useState("");
@@ -81,63 +90,126 @@ function App() {
     deriveKey();
   }, [deriveKey]);
 
-  const encryptFile = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const fileContent = event.target.result;
-        const encrypted = CryptoJS.AES.encrypt(
-          fileContent,
-          derivedKey
-        ).toString();
-        resolve(encrypted);
-      };
-      reader.onerror = (error) => reject(error);
-      reader.readAsText(file);
-    });
+  const saveEncryptionKeys = (newKeys) => {
+    setEncryptionKey(newKeys);
+    localStorage.setItem("encryptionKeys", JSON.stringify(newKeys));
   };
 
-  const decryptFile = (encryptedContent) => {
+  const encryptFile = (fileContent, key) => {
+    const wordArray = CryptoJS.enc.Utf8.parse(fileContent);
+    const encrypted = CryptoJS.AES.encrypt(wordArray, key).toString();
+    return encrypted;
+  };
+
+  const decryptFile = (encryptedContent, key) => {
     try {
-      const decrypted = CryptoJS.AES.decrypt(encryptedContent, derivedKey);
-      return decrypted.toString(CryptoJS.enc.Utf8);
+      const decrypted = CryptoJS.AES.decrypt(encryptedContent, key);
+      const decryptedStr = decrypted.toString(CryptoJS.enc.Utf8);
+      if (!decryptedStr) {
+        throw new Error("Decryption failed. The key might be incorrect.");
+      }
+      return decryptedStr;
     } catch (error) {
       console.error("Decryption failed:", error);
-      throw new Error("Invalid password or corrupted file");
+      throw new Error(
+        "Failed to decrypt file. Please check your encryption key."
+      );
     }
   };
 
+  const handleFileSelect = (selectedFile) => {
+    setFile(selectedFile);
+    setFileName(selectedFile.name);
+  };
+
   async function uploadFile() {
-    if (!file || !fileName || !derivedKey) {
-      alert("Please select a file, enter a file name, and provide a password");
+    if (!file || !fileName || !encryptionKey) {
+      alert(
+        "Please select a file, enter a file name, and provide an encryption key"
+      );
       return;
     }
 
     try {
-      const encryptedContent = await encryptFile(file);
-      const response = await axios.post(
-        "http://localhost:3000/upload",
-        {
-          name: fileName,
-          content: encryptedContent,
-          folderPath: currentFolder,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const fileContent = event.target.result;
+        const encryptedContent = encryptFile(fileContent, encryptionKey);
+        const base64EncryptedContent = btoa(encryptedContent);
+
+        console.log("Encryption key used for encryption:", encryptionKey);
+        console.log(
+          "Encrypted content before upload:",
+          base64EncryptedContent.substring(0, 100)
+        ); // Log first 100 chars
+
+        const response = await axios.post(
+          "http://localhost:3000/upload",
+          {
+            name: fileName,
+            content: base64EncryptedContent,
+            folderPath: currentFolder,
           },
-        }
-      );
-      console.log("Upload response:", response);
-      alert(
-        `File uploaded successfully! CID: ${response.data.cid}, Version: ${response.data.version}`
-      );
-      fetchFiles();
-      setFile(null);
-      setFileName("");
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        console.log("Upload response:", response);
+        alert(
+          `File uploaded successfully! CID: ${response.data.cid}, Version: ${response.data.version}`
+        );
+        fetchFiles();
+        setFile(null);
+        setFileName("");
+      };
+      reader.readAsText(file);
     } catch (error) {
       console.error("Error uploading file:", error);
       alert(`Error uploading file: ${error.message}`);
+    }
+  }
+
+  async function retrieveFile(name, version = "") {
+    if (!encryptionKey) {
+      alert("Please enter an encryption key");
+      return;
+    }
+
+    try {
+      const response = await axios.get(
+        `http://localhost:3000/file/${name}${
+          version ? `?version=${version}` : ""
+        }`
+      );
+
+      console.log("Encryption key used for decryption:", encryptionKey);
+      console.log(
+        "Encrypted content after download:",
+        response.data.content.substring(0, 100)
+      ); // Log first 100 chars
+
+      const encryptedContent = atob(response.data.content);
+      let decryptedContent;
+      try {
+        decryptedContent = decryptFile(encryptedContent, encryptionKey);
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+      setFileContent(decryptedContent);
+      setCurrentFile({
+        name,
+        version: response.data.version,
+        latestVersion: response.data.latestVersion,
+        timestamp: response.data.timestamp,
+      });
+      fetchVersionHistory(name);
+      console.log("Decrypted content:", decryptedContent.substring(0, 100)); // Log first 100 chars
+    } catch (error) {
+      console.error("Error retrieving file:", error);
+      alert(`Error retrieving file: ${error.message}`);
     }
   }
 
@@ -158,34 +230,6 @@ function App() {
     } catch (error) {
       console.error("Error creating folder:", error);
       alert(`Error creating folder: ${error.message}`);
-    }
-  }
-
-  async function retrieveFile(name, version = "") {
-    try {
-      const response = await axios.get(
-        `http://localhost:3000/file/${name}${
-          version ? `?version=${version}` : ""
-        }`
-      );
-      let decryptedContent;
-      try {
-        decryptedContent = decryptFile(response.data.content);
-      } catch (error) {
-        alert("Failed to decrypt file. Please check your password.");
-        return;
-      }
-      setFileContent(decryptedContent);
-      setCurrentFile({
-        name,
-        version: response.data.version,
-        latestVersion: response.data.latestVersion,
-        timestamp: response.data.timestamp,
-      });
-      fetchVersionHistory(name);
-    } catch (error) {
-      console.error("Error retrieving file:", error);
-      alert(`Error retrieving file: ${error.message}`);
     }
   }
 
@@ -301,7 +345,7 @@ function App() {
         {/* Main content area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {/* Add encryption key input */}
+            {/* Encryption key input */}
             <div className="bg-white shadow-md rounded-lg p-6 mb-6">
               <h2 className="text-lg font-semibold mb-4">Encryption Key</h2>
               <input
@@ -311,6 +355,10 @@ function App() {
                 onChange={(e) => setEncryptionKey(e.target.value)}
                 className="w-full p-2 border rounded"
               />
+              <p className="text-sm text-gray-600 mt-2">
+                This key will be used to encrypt and decrypt your files. Make
+                sure to remember it, as it cannot be recovered.
+              </p>
             </div>
             {/* File upload form */}
             <div className="bg-white shadow-md rounded-lg p-6 mb-6">
@@ -336,22 +384,27 @@ function App() {
                 </button>
               </div>
             </div>
-            {/* Updated password input */}
+
+            {/* File upload form with drag-and-drop */}
             <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">
-                Encryption Password
-              </h2>
-              <input
-                type="password"
-                placeholder="Enter encryption password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-2 border rounded"
-              />
-              <p className="text-sm text-gray-600 mt-2">
-                This password will be used to derive your encryption key. Make
-                sure to remember it, as it cannot be recovered.
-              </p>
+              <h2 className="text-lg font-semibold mb-4">Upload File</h2>
+              <DragDropUpload onFileSelect={handleFileSelect} />
+              {file && <p className="mt-4">Selected file: {file.name}</p>}
+              <div className="mt-4 flex items-center space-x-4">
+                <input
+                  type="text"
+                  placeholder="File name"
+                  value={fileName}
+                  onChange={(e) => setFileName(e.target.value)}
+                  className="flex-1 p-2 border rounded"
+                />
+                <button
+                  onClick={uploadFile}
+                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                >
+                  Upload
+                </button>
+              </div>
             </div>
 
             {/* Create folder form */}
