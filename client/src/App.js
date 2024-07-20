@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import axios from "axios";
 import CSVAnalysis from "./CSVAnalysis";
@@ -7,34 +7,22 @@ import { useAuth0 } from "@auth0/auth0-react";
 import LoginPage from "./LoginPage";
 import DiffView from "./DiffView";
 
-const contractABI = [
-  "function uploadFile(string memory name, string memory ipfsHash) public",
-  "function getFile(string memory name) public view returns (string memory, address)",
-];
-const contractAddress = "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8"; // Replace with your contract address
-
 function App() {
   const { isAuthenticated, logout, user, isLoading } = useAuth0();
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
-  const [retrieveName, setRetrieveName] = useState("");
   const [files, setFiles] = useState([]);
   const [currentFile, setCurrentFile] = useState(null);
   const [versionHistory, setVersionHistory] = useState([]);
   const [currentFolder, setCurrentFolder] = useState("/");
   const [newFolderName, setNewFolderName] = useState("");
   const [diffView, setDiffView] = useState(null);
-  const [version1, setVersion1] = useState(null);
-  const [version2, setVersion2] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [shareAddress, setShareAddress] = useState("");
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchFiles();
-    }
-  }, [isAuthenticated, currentFolder]);
-
-  async function fetchFiles() {
+  const fetchFiles = useCallback(async () => {
     try {
       const response = await axios.get("http://localhost:3000/files");
       console.log("Fetched files and folders:", response.data.files);
@@ -45,15 +33,16 @@ function App() {
       console.error("Error fetching files:", error);
       alert(`Error fetching files: ${error.message}`);
     }
-  }
+  }, [currentFolder]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchFiles();
+    }
+  }, [isAuthenticated, fetchFiles]);
 
   function navigateToFolder(folderPath) {
     setCurrentFolder(folderPath);
-  }
-
-  function navigateUp() {
-    const parentFolder = currentFolder.split("/").slice(0, -2).join("/") + "/";
-    setCurrentFolder(parentFolder);
   }
 
   async function uploadFile() {
@@ -106,9 +95,9 @@ function App() {
       const response = await axios.post("http://localhost:3000/folder", {
         folderPath: newFolderPath,
       });
-      alert(response.data.message); // This will show either "created successfully" or "already exists"
+      alert(response.data.message);
       setNewFolderName("");
-      fetchFiles(); // Refresh the file list
+      fetchFiles();
     } catch (error) {
       console.error("Error creating folder:", error);
       alert(`Error creating folder: ${error.message}`);
@@ -162,22 +151,49 @@ function App() {
     }
   }
 
-  async function compareVersions(name, version1, version2) {
+  async function searchFiles() {
     try {
-      const response1 = await axios.get(
-        `http://localhost:3000/file/${name}?version=${version1}`
+      const response = await axios.get(
+        `http://localhost:3000/search?query=${searchQuery}`
       );
-      const response2 = await axios.get(
-        `http://localhost:3000/file/${name}?version=${version2}`
-      );
-
-      setDiffView({
-        oldContent: response1.data.content,
-        newContent: response2.data.content,
-      });
+      setSearchResults(response.data.results);
     } catch (error) {
-      console.error("Error comparing versions:", error);
-      alert(`Error comparing versions: ${error.message}`);
+      console.error("Error searching files:", error);
+      alert(`Error searching files: ${error.message}`);
+    }
+  }
+
+  async function shareFile(fileName) {
+    if (!ethers.isAddress(shareAddress)) {
+      alert("Please enter a valid Ethereum address");
+      return;
+    }
+    try {
+      const response = await axios.post("http://localhost:3000/share", {
+        fileName,
+        sharedWith: shareAddress,
+      });
+      alert(response.data.message);
+    } catch (error) {
+      console.error("Error sharing file:", error);
+      alert(`Error sharing file: ${error.message}`);
+    }
+  }
+
+  async function revokeFileSharing(fileName) {
+    if (!ethers.isAddress(shareAddress)) {
+      alert("Please enter a valid Ethereum address");
+      return;
+    }
+    try {
+      const response = await axios.post("http://localhost:3000/revoke-share", {
+        fileName,
+        revokedFrom: shareAddress,
+      });
+      alert(response.data.message);
+    } catch (error) {
+      console.error("Error revoking file sharing:", error);
+      alert(`Error revoking file sharing: ${error.message}`);
     }
   }
 
@@ -266,6 +282,48 @@ function App() {
               </div>
             </div>
 
+            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">Search Files</h2>
+              <div className="flex items-center space-x-4">
+                <input
+                  type="text"
+                  placeholder="Search query"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1 p-2 border rounded"
+                />
+                <button
+                  onClick={searchFiles}
+                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                >
+                  Search
+                </button>
+              </div>
+            </div>
+
+            {/* Search results */}
+            {searchResults.length > 0 && (
+              <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+                <h2 className="text-lg font-semibold mb-4">Search Results</h2>
+                <ul className="divide-y divide-gray-200">
+                  {searchResults.map((file, index) => (
+                    <li
+                      key={index}
+                      className="py-4 flex items-center justify-between"
+                    >
+                      <span>{file.name}</span>
+                      <button
+                        onClick={() => retrieveFile(file.name)}
+                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                      >
+                        View
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* File and folder list */}
             <div className="bg-white shadow-md rounded-lg p-6">
               <h2 className="text-lg font-semibold mb-4">Files and Folders</h2>
@@ -319,6 +377,32 @@ function App() {
                   Version: {currentFile.version} of {currentFile.latestVersion}
                 </p>
                 <p>Timestamp: {currentFile.timestamp}</p>
+
+                {/* File sharing controls */}
+                <div className="mt-4">
+                  <h3 className="text-md font-semibold mb-2">File Sharing</h3>
+                  <div className="flex items-center space-x-4">
+                    <input
+                      type="text"
+                      placeholder="Ethereum address"
+                      value={shareAddress}
+                      onChange={(e) => setShareAddress(e.target.value)}
+                      className="flex-1 p-2 border rounded"
+                    />
+                    <button
+                      onClick={() => shareFile(currentFile.name)}
+                      className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
+                    >
+                      Share
+                    </button>
+                    <button
+                      onClick={() => revokeFileSharing(currentFile.name)}
+                      className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                </div>
 
                 <h3 className="text-md font-semibold mt-4 mb-2">
                   Version History

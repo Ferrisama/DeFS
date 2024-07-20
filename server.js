@@ -5,6 +5,8 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
+import NodeCache from "node-cache";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,22 +22,46 @@ const ipfs = create({
 const contractABI = JSON.parse(
   fs.readFileSync(path.join(__dirname, "./out/Contract.sol/FileStorage.json"))
 ).abi;
-const contractAddress = "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8"; // Replace with your deployed contract address
+const contractAddress = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"; // Replace with your deployed contract address
 
 const provider = new ethers.providers.JsonRpcProvider("http://localhost:8545");
 const signer = provider.getSigner();
 const contract = new ethers.Contract(contractAddress, contractABI, signer);
 
+const fileCache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
+const searchIndex = {};
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use(cors());
 app.use(express.json());
+app.use(limiter);
 
-app.post("/upload", async (req, res) => {
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // Limit each IP to 10 file uploads per hour
+  message: "Too many file uploads from this IP, please try again after an hour",
+});
+
+app.post("/upload", uploadLimiter, async (req, res) => {
   try {
     const { name, content, folderPath } = req.body;
     const buffer = Buffer.from(content, "base64");
     const { cid } = await ipfs.add(buffer);
     await contract.uploadFile(name, cid.toString(), folderPath);
     const latestVersion = await contract.getLatestVersion(name);
+
+    // Add to search index
+    searchIndex[name.toLowerCase()] = {
+      name,
+      folderPath,
+      content: buffer.toString().toLowerCase(),
+    };
+
     res.json({
       success: true,
       cid: cid.toString(),
@@ -52,6 +78,15 @@ app.get("/file/:name", async (req, res) => {
   try {
     const { name } = req.params;
     const { version } = req.query;
+
+    const cacheKey = `file:${name}:${version || "latest"}`;
+    const cachedFile = fileCache.get(cacheKey);
+
+    if (cachedFile) {
+      return res.json(cachedFile);
+    }
+
+    // Your existing file retrieval logic here
     const latestVersion = await contract.getLatestVersion(name);
     const versionToFetch = version
       ? parseInt(version)
@@ -67,7 +102,7 @@ app.get("/file/:name", async (req, res) => {
     }
     const content = Buffer.concat(chunks).toString();
 
-    res.json({
+    const fileData = {
       success: true,
       content,
       owner,
@@ -75,7 +110,12 @@ app.get("/file/:name", async (req, res) => {
       latestVersion: latestVersion.toNumber(),
       timestamp: new Date(timestamp * 1000).toISOString(),
       folderPath,
-    });
+    };
+
+    // Cache the file data
+    fileCache.set(cacheKey, fileData);
+
+    res.json(fileData);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -205,6 +245,42 @@ app.post("/file/:name/revert", async (req, res) => {
     });
   } catch (error) {
     console.error("Server error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/search", (req, res) => {
+  const { query } = req.query;
+  const results = Object.values(searchIndex).filter(
+    (file) =>
+      file.name.toLowerCase().includes(query.toLowerCase()) ||
+      file.content.includes(query.toLowerCase())
+  );
+  res.json({ success: true, results });
+});
+
+app.post("/share", async (req, res) => {
+  try {
+    const { fileName, sharedWith } = req.body;
+    await contract.shareFile(fileName, sharedWith);
+    res.json({
+      success: true,
+      message: `File ${fileName} shared with ${sharedWith}`,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/revoke-share", async (req, res) => {
+  try {
+    const { fileName, revokedFrom } = req.body;
+    await contract.revokeFileSharing(fileName, revokedFrom);
+    res.json({
+      success: true,
+      message: `File sharing revoked for ${fileName} from ${revokedFrom}`,
+    });
+  } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });

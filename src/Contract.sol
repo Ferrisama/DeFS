@@ -19,6 +19,8 @@ contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     mapping(string => bool) public folders;
 
+    mapping(string => mapping(address => bool)) public fileShares;
+
     mapping(string => File) public files;
     string[] public fileList;
     uint public fileCount;
@@ -27,6 +29,9 @@ contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event FileReverted(string name, uint256 fromVersion, uint256 newVersion);
     event FileDeleted(string name);
     event FolderCreated(string folderPath);
+    event FileShared(string name, address sharedWith);
+    event FileSharingRevoked(string name, address revokedFrom);
+
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -55,13 +60,15 @@ contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function getFile(string memory name, uint256 version) public view returns (string memory, address, uint256, string memory) {
-        require(files[name].owner != address(0), "File does not exist");
-        require(version > 0 && version <= files[name].versions.length, "Invalid version");
-        
-        FileVersion memory fileVersion = files[name].versions[version - 1];
-        return (fileVersion.ipfsHash, files[name].owner, fileVersion.timestamp, files[name].folderPath);
+    require(files[name].owner != address(0), "File does not exist");
+    require(version > 0 && version <= files[name].versions.length, "Invalid version");
+    require(canAccessFile(name, msg.sender), "You don't have access to this file");
+    
+    FileVersion memory fileVersion = files[name].versions[version - 1];
+    return (fileVersion.ipfsHash, files[name].owner, fileVersion.timestamp, files[name].folderPath);
     }
 
+    
     function getLatestVersion(string memory name) public view returns (uint256) {
         require(files[name].owner != address(0), "File does not exist");
         return files[name].versions.length;
@@ -91,6 +98,24 @@ contract FileStorage is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 newVersion = files[name].versions.length;
         emit FileReverted(name, versionToRevert, newVersion);
         emit FileUploaded(name, ipfsHash, msg.sender, newVersion, files[name].folderPath);
+    }
+
+    function shareFile(string memory name, address user) public {
+    require(files[name].owner == msg.sender, "Only the owner can share the file");
+    require(user != address(0), "Invalid address");
+    fileShares[name][user] = true;
+    emit FileShared(name, user);
+    }
+    
+    function revokeFileSharing(string memory name, address user) public {
+    require(files[name].owner == msg.sender, "Only the owner can revoke sharing");
+    require(user != address(0), "Invalid address");
+    fileShares[name][user] = false;
+    emit FileSharingRevoked(name, user);
+    }
+    
+    function canAccessFile(string memory name, address user) public view returns (bool) {
+    return files[name].owner == user || fileShares[name][user];
     }
 
     function createFolder(string memory folderPath) public {
