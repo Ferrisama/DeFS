@@ -4,10 +4,8 @@ import { ethers } from "ethers";
 import axios from "axios";
 import CryptoJS from "crypto-js";
 import CSVAnalysis from "./CSVAnalysis";
-import { useDropzone } from "react-dropzone";
 import { useAuth0 } from "@auth0/auth0-react";
 import LoginPage from "./LoginPage";
-import DiffView from "./DiffView";
 import IntegratedFileUpload from "./IntegratedFileUpload";
 import FilePreview from "./FilePreview";
 
@@ -27,7 +25,6 @@ function App() {
   const [versionHistory, setVersionHistory] = useState([]);
   const [currentFolder, setCurrentFolder] = useState("/");
   const [newFolderName, setNewFolderName] = useState("");
-  const [diffView, setDiffView] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [shareAddress, setShareAddress] = useState("");
@@ -90,11 +87,6 @@ function App() {
   useEffect(() => {
     deriveKey();
   }, [deriveKey]);
-
-  const saveEncryptionKeys = (newKeys) => {
-    setEncryptionKey(newKeys);
-    localStorage.setItem("encryptionKeys", JSON.stringify(newKeys));
-  };
 
   const encryptFile = (fileContent, key) => {
     const wordArray = CryptoJS.enc.Utf8.parse(fileContent);
@@ -561,17 +553,6 @@ function App() {
                 </ul>
 
                 {fileContent && <CSVAnalysis csvContent={fileContent} />}
-              </div>
-            )}
-
-            {/* Diff view */}
-            {diffView && (
-              <div className="bg-white shadow-md rounded-lg p-6 mt-6">
-                <h3 className="text-lg font-semibold mb-4">Diff View</h3>
-                <DiffView
-                  oldContent={diffView.oldContent}
-                  newContent={diffView.newContent}
-                />
               </div>
             )}
           </div>
