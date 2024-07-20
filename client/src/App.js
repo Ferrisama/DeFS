@@ -8,7 +8,7 @@ import { useDropzone } from "react-dropzone";
 import { useAuth0 } from "@auth0/auth0-react";
 import LoginPage from "./LoginPage";
 import DiffView from "./DiffView";
-import DragDropUpload from "./DragDropUpload";
+import IntegratedFileUpload from "./IntegratedFileUpload";
 
 const contractABI = [
   "function uploadFile(string memory name, string memory ipfsHash) public",
@@ -361,51 +361,12 @@ function App() {
               </p>
             </div>
             {/* File upload form */}
-            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">Upload File</h2>
-              <div className="flex items-center space-x-4">
-                <input
-                  type="text"
-                  placeholder="File name"
-                  value={fileName}
-                  onChange={(e) => setFileName(e.target.value)}
-                  className="flex-1 p-2 border rounded"
-                />
-                <input
-                  type="file"
-                  onChange={(e) => setFile(e.target.files[0])}
-                  className="p-2 border rounded"
-                />
-                <button
-                  onClick={uploadFile}
-                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                >
-                  Upload
-                </button>
-              </div>
-            </div>
-
-            {/* File upload form with drag-and-drop */}
-            <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">Upload File</h2>
-              <DragDropUpload onFileSelect={handleFileSelect} />
-              {file && <p className="mt-4">Selected file: {file.name}</p>}
-              <div className="mt-4 flex items-center space-x-4">
-                <input
-                  type="text"
-                  placeholder="File name"
-                  value={fileName}
-                  onChange={(e) => setFileName(e.target.value)}
-                  className="flex-1 p-2 border rounded"
-                />
-                <button
-                  onClick={uploadFile}
-                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                >
-                  Upload
-                </button>
-              </div>
-            </div>
+            <IntegratedFileUpload
+              onFileSelect={handleFileSelect}
+              fileName={fileName}
+              setFileName={setFileName}
+              uploadFile={uploadFile}
+            />
 
             {/* Create folder form */}
             <div className="bg-white shadow-md rounded-lg p-6 mb-6">
